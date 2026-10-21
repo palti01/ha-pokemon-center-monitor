@@ -1,5 +1,5 @@
 name: Pokémon Center Drop-Monitor
-version: "1.0.4"
+version: "1.0.5"
 slug: pokemon_center_monitor
 description: Meldet neue Produkte, Restocks und Warteschlangen im deutschen Pokémon-Center-Shop per Home-Assistant-Webhook.
 arch:

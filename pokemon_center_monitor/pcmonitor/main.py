@@ -247,7 +247,7 @@ class Monitor:
                 log.info("Feed ok: %s – %d Einträge, neuester: %s", url, len(items),
                          items[0].title[:80] if items else "-")
             kws = [k.lower() for k in feed.get("keywords") or []]
-            key = "feed:" + url
+            key = "feed2:" + url
             seen_list = [g for g in self.store.meta_get(key).split("\n") if g]
             seen = set(seen_list)
             first = not seen
@@ -257,7 +257,11 @@ class Monitor:
                 seen.add(it.guid)
                 seen_list.append(it.guid)
                 t = it.title.lower()
-                if first or (must and not feed.get("own_keywords") and not any(k in t for k in must)):
+                if must and not feed.get("own_keywords") and not any(k in t for k in must):
+                    continue
+                if first:
+                    if not kws or any(k in t for k in kws):
+                        log.info("Baseline-Treffer [%s] %s – %s", it.published or "?", host, it.title[:120])
                     continue
                 if not kws or any(k in t for k in kws):
                     self.emit(Event("new", f"📰 {it.title}", url=it.link, extra={"source": url}))
