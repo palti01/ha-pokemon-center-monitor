@@ -1,5 +1,5 @@
 name: Pokémon Center Drop-Monitor
-version: "1.0.1"
+version: "1.0.2"
 slug: pokemon_center_monitor
 description: Meldet neue Produkte, Restocks und Warteschlangen im deutschen Pokémon-Center-Shop per Home-Assistant-Webhook.
 arch:
@@ -34,6 +34,11 @@ options:
     - https://pokezentrum.de/feed/
     - https://pokejungle.net/feed/
     - https://news.google.com/rss/search?q=%22Pok%C3%A9mon+Center%22+Vorbestellung+OR+Drop+OR+Warteschlange&hl=de&gl=DE&ceid=DE:de
+  feed_must_contain:
+    - pokémon
+    - pokemon
+    - tcg
+    - sammelkarten
   feed_keywords:
     - pokémon center
     - pokemon center
@@ -43,7 +48,7 @@ options:
   min_request_gap_s: 45
   listing_interval_s: 120
   product_recheck_s: 900
-  feed_interval_s: 300
+  feed_interval_s: 120
 schema:
   webhook_url: str?
   ntfy_url: str?
@@ -58,6 +63,8 @@ schema:
     - str
   feed_urls:
     - url
+  feed_must_contain:
+    - str
   feed_keywords:
     - str
   min_request_gap_s: int(30,)

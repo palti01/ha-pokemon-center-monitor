@@ -20,7 +20,7 @@ import requests
 import yaml
 
 from .notify import Event, Notifier
-from .shop import ShopClient, fetch_feed, parse_listing, parse_product
+from .shop import FeedItem, ShopClient, fetch_feed, parse_listing, parse_product  # noqa: F401
 from .store import Product, Store
 
 log = logging.getLogger("pcmonitor")
@@ -66,7 +66,7 @@ def load_config(path: str | None) -> dict:
         import json
         o = json.loads(ha_opts.read_text(encoding="utf-8"))
         for k in ("shop_enabled", "listings", "watch", "include_keywords", "exclude_keywords", "min_request_gap_s",
-                  "listing_interval_s", "product_recheck_s", "feed_interval_s"):
+                  "listing_interval_s", "product_recheck_s", "feed_interval_s", "feed_must_contain"):
             if k in o and o[k] is not None:
                 cfg[k] = o[k]
         if o.get("feed_urls") is not None:
@@ -111,6 +111,7 @@ class Monitor:
         self.last_feed = 0.0
         self.baseline_done = self.store.meta_get("baseline") == "1"
         self.listing_ok: set[str] = set()
+        self.feeds_logged: set[str] = set()
         self.running = True
 
     # ---------- Filter ----------------------------------------------------
@@ -212,24 +213,34 @@ class Monitor:
     # ---------- Feeds -----------------------------------------------------
     def check_feeds(self) -> None:
         self.last_feed = time.time()
+        must = [k.lower() for k in self.cfg.get("feed_must_contain") or []]
         for feed in self.cfg.get("feeds") or []:
+            url = feed["url"]
             try:
-                items = fetch_feed(self.feed_session, feed["url"])
+                items = fetch_feed(self.feed_session, url)
             except Exception as e:  # noqa: BLE001
-                log.warning("Feed %s nicht lesbar: %s", feed["url"], e)
+                log.warning("Feed %s nicht lesbar: %s", url, e)
                 continue
+            if url not in self.feeds_logged:
+                self.feeds_logged.add(url)
+                log.info("Feed ok: %s – %d Einträge, neuester: %s", url, len(items),
+                         items[0].title[:80] if items else "-")
             kws = [k.lower() for k in feed.get("keywords") or []]
-            key = "feed:" + feed["url"]
-            seen = set(filter(None, self.store.meta_get(key).split("\n")))
+            key = "feed:" + url
+            seen_list = [g for g in self.store.meta_get(key).split("\n") if g]
+            seen = set(seen_list)
             first = not seen
             for it in items:
                 if it.guid in seen:
                     continue
                 seen.add(it.guid)
-                if not first and (not kws or any(k in it.title.lower() for k in kws)):
-                    self.emit(Event("new", f"📰 {it.title}", url=it.link,
-                                    extra={"source": feed["url"]}))
-            self.store.meta_set(key, "\n".join(list(seen)[-300:]))
+                seen_list.append(it.guid)
+                t = it.title.lower()
+                if first or (must and not any(k in t for k in must)):
+                    continue
+                if not kws or any(k in t for k in kws):
+                    self.emit(Event("new", f"📰 {it.title}", url=it.link, extra={"source": url}))
+            self.store.meta_set(key, "\n".join(seen_list[-500:]))
 
     # ---------- Schleife --------------------------------------------------
     def run_once_diagnostic(self) -> int:
