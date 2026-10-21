@@ -1,0 +1,63 @@
+name: Pokémon Center Drop-Monitor
+version: "1.0.0"
+slug: pokemon_center_monitor
+description: Meldet neue Produkte, Restocks und Warteschlangen im deutschen Pokémon-Center-Shop per Home-Assistant-Webhook.
+arch:
+  - aarch64
+  - amd64
+startup: application
+boot: auto
+init: false
+options:
+  webhook_url: ""
+  ntfy_url: ""
+  listings:
+    - https://www.pokemoncenter.com/de-de/category/tcg-cards
+    - https://www.pokemoncenter.com/de-de/category/elite-trainer-box
+    - https://www.pokemoncenter.com/de-de/search/dunkelnacht
+  watch: []
+  include_keywords:
+    - sammelkartenspiel
+    - top-trainer-box
+    - display
+    - booster
+    - kollektion
+    - dunkelnacht
+    - wachsendes chaos
+    - optimale ordnung
+  exclude_keywords:
+    - plüsch
+    - t-shirt
+    - hülle
+  feed_urls:
+    - https://pokezentrum.de/feed/
+    - https://pokejungle.net/feed/
+  feed_keywords:
+    - pokémon center
+    - pokemon center
+    - vorbestell
+    - vorverkauf
+    - warteschlange
+  min_request_gap_s: 45
+  listing_interval_s: 120
+  product_recheck_s: 900
+  feed_interval_s: 300
+schema:
+  webhook_url: str?
+  ntfy_url: str?
+  listings:
+    - url
+  watch:
+    - url
+  include_keywords:
+    - str
+  exclude_keywords:
+    - str
+  feed_urls:
+    - url
+  feed_keywords:
+    - str
+  min_request_gap_s: int(30,)
+  listing_interval_s: int(60,)
+  product_recheck_s: int(300,)
+  feed_interval_s: int(120,)
