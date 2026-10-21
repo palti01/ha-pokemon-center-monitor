@@ -83,6 +83,8 @@ def load_config(path: str | None) -> dict:
         n = {}
         if o.get("webhook_url"):
             n["homeassistant"] = {"webhook_url": o["webhook_url"]}
+        if o.get("reddit_client_id") and o.get("reddit_client_secret"):
+            cfg["reddit"] = {"client_id": o["reddit_client_id"], "client_secret": o["reddit_client_secret"]}
         if o.get("ntfy_url"):
             n["ntfy"] = {"url": o["ntfy_url"]}
         cfg["notify"] = n
@@ -112,6 +114,10 @@ class Monitor:
         self.notifier = Notifier(cfg["notify"])
         self.shop = ShopClient()
         self.feed_session = requests.Session()
+        if (cfg.get("reddit") or {}).get("client_id"):
+            from . import shop as _shop
+            _shop.REDDIT = _shop.RedditAuth(cfg["reddit"]["client_id"], cfg["reddit"]["client_secret"])
+            log.info("Reddit über offizielle API (OAuth).")
         self.listing_due = {u: 0.0 for u in cfg["listings"]}
         self.backoff = 0.0
         self.blocked_since: float | None = None

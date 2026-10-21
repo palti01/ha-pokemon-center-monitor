@@ -1,5 +1,5 @@
 name: Pokémon Center Drop-Monitor
-version: "1.0.3"
+version: "1.0.4"
 slug: pokemon_center_monitor
 description: Meldet neue Produkte, Restocks und Warteschlangen im deutschen Pokémon-Center-Shop per Home-Assistant-Webhook.
 arch:
@@ -11,6 +11,8 @@ init: false
 options:
   webhook_url: ""
   ntfy_url: ""
+  reddit_client_id: ""
+  reddit_client_secret: ""
   shop_enabled: false
   listings:
     - https://www.pokemoncenter.com/de-de/category/tcg-cards
@@ -52,6 +54,8 @@ options:
 schema:
   webhook_url: str?
   ntfy_url: str?
+  reddit_client_id: str?
+  reddit_client_secret: password?
   shop_enabled: bool
   listings:
     - url

@@ -279,7 +279,50 @@ class FeedItem:
     published: str
 
 
+class RedditAuth:
+    """Offizielle Reddit-API (App-only OAuth). Ohne Anmeldung blockt Reddit RSS-Abrufe oft mit 429."""
+    UA = "homeassistant:pokemon-center-monitor:1.0 (personal drop alerts)"
+
+    def __init__(self, client_id: str, client_secret: str):
+        self.cid, self.secret = client_id, client_secret
+        self.token, self.expires = "", 0.0
+
+    def get_token(self, session: requests.Session) -> str:
+        import time
+        if self.token and time.time() < self.expires - 60:
+            return self.token
+        r = session.post("https://www.reddit.com/api/v1/access_token",
+                         auth=(self.cid, self.secret), data={"grant_type": "client_credentials"},
+                         headers={"User-Agent": self.UA}, timeout=20)
+        r.raise_for_status()
+        j = r.json()
+        self.token, self.expires = j["access_token"], time.time() + float(j.get("expires_in", 3600))
+        return self.token
+
+
+REDDIT: RedditAuth | None = None
+
+
+def _reddit_items(session: requests.Session, url: str) -> list[FeedItem]:
+    m = re.search(r"reddit\.com/r/([^/]+)/(new|hot|rising)?", url)
+    if not m:
+        raise ValueError(f"Reddit-URL nicht erkannt: {url}")
+    sub, listing = m.group(1), m.group(2) or "new"
+    r = session.get(f"https://oauth.reddit.com/r/{sub}/{listing}", params={"limit": 25, "raw_json": 1},
+                    headers={"Authorization": f"Bearer {REDDIT.get_token(session)}", "User-Agent": RedditAuth.UA},
+                    timeout=20)
+    r.raise_for_status()
+    out = []
+    for c in r.json().get("data", {}).get("children", []):
+        d = c.get("data", {})
+        out.append(FeedItem(d.get("name", ""), d.get("title", ""),
+                            "https://www.reddit.com" + d.get("permalink", ""), ""))
+    return out
+
+
 def fetch_feed(session: requests.Session, url: str) -> list[FeedItem]:
+    if REDDIT and "reddit.com/r/" in url:
+        return _reddit_items(session, url)
     r = session.get(url, timeout=20, headers={
         "User-Agent": UA, "Accept": "application/rss+xml, application/xml;q=0.9, */*;q=0.8",
         "Accept-Language": "de-DE,de;q=0.9"})
