@@ -280,7 +280,9 @@ class FeedItem:
 
 
 def fetch_feed(session: requests.Session, url: str) -> list[FeedItem]:
-    r = session.get(url, timeout=20, headers={"User-Agent": "pcmonitor/1.0 (+RSS reader)"})
+    r = session.get(url, timeout=20, headers={
+        "User-Agent": UA, "Accept": "application/rss+xml, application/xml;q=0.9, */*;q=0.8",
+        "Accept-Language": "de-DE,de;q=0.9"})
     r.raise_for_status()
     return parse_feed(r.content)
 

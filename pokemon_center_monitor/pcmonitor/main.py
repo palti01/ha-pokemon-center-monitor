@@ -48,6 +48,7 @@ DEFAULTS = {
          "keywords": ["pokémon center", "pokemon center", "vorbestell", "vorverkauf"]},
     ],
     "feed_interval_s": 300,
+    "shop_enabled": True,
     "state_path": "/data/state.db",
     "notify": {},
 }
@@ -64,7 +65,7 @@ def load_config(path: str | None) -> dict:
     if ha_opts.exists():
         import json
         o = json.loads(ha_opts.read_text(encoding="utf-8"))
-        for k in ("listings", "watch", "include_keywords", "exclude_keywords", "min_request_gap_s",
+        for k in ("shop_enabled", "listings", "watch", "include_keywords", "exclude_keywords", "min_request_gap_s",
                   "listing_interval_s", "product_recheck_s", "feed_interval_s"):
             if k in o and o[k] is not None:
                 cfg[k] = o[k]
@@ -251,11 +252,17 @@ class Monitor:
         return 0 if ok else 2
 
     def run(self) -> None:
+        if not self.cfg.get("shop_enabled", True):
+            log.info("Shop-Abruf deaktiviert – nur News-Feeds werden überwacht.")
         log.info("Start – %d bekannte Produkte, Baseline %s",
                  self.store.count(), "vorhanden" if self.baseline_done else "wird angelegt")
         while self.running:
             if time.time() - self.last_feed > self.cfg["feed_interval_s"]:
                 self.check_feeds()
+
+            if not self.cfg.get("shop_enabled", True):
+                self._sleep(self.cfg["feed_interval_s"])
+                continue
 
             if self.backoff:
                 log.info("Pause %ds (Backoff)", self.backoff)
