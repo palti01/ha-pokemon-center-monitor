@@ -70,7 +70,16 @@ def load_config(path: str | None) -> dict:
             if k in o and o[k] is not None:
                 cfg[k] = o[k]
         if o.get("feed_urls") is not None:
-            cfg["feeds"] = [{"url": u, "keywords": o.get("feed_keywords") or []} for u in o["feed_urls"]]
+            feeds = []
+            for entry in o["feed_urls"]:
+                # Format: "URL" oder "URL | stichwort1, stichwort2" (eigene Stichworte, ohne Pflichtwörter)
+                url, _, kw = entry.partition("|")
+                f = {"url": url.strip(), "keywords": o.get("feed_keywords") or []}
+                if kw.strip():
+                    f["keywords"] = [k.strip() for k in kw.split(",") if k.strip()]
+                    f["own_keywords"] = True
+                feeds.append(f)
+            cfg["feeds"] = feeds
         n = {}
         if o.get("webhook_url"):
             n["homeassistant"] = {"webhook_url": o["webhook_url"]}
@@ -112,6 +121,7 @@ class Monitor:
         self.baseline_done = self.store.meta_get("baseline") == "1"
         self.listing_ok: set[str] = set()
         self.feeds_logged: set[str] = set()
+        self.feed_host_last: dict[str, float] = {}
         self.running = True
 
     # ---------- Filter ----------------------------------------------------
@@ -216,6 +226,11 @@ class Monitor:
         must = [k.lower() for k in self.cfg.get("feed_must_contain") or []]
         for feed in self.cfg.get("feeds") or []:
             url = feed["url"]
+            host = url.split("/")[2] if "//" in url else url
+            wait = self.feed_host_last.get(host, 0) + 10 - time.time()
+            if wait > 0:              # gleiche Seite nicht direkt hintereinander abfragen (Reddit: 429)
+                self._sleep(wait)
+            self.feed_host_last[host] = time.time()
             try:
                 items = fetch_feed(self.feed_session, url)
             except Exception as e:  # noqa: BLE001
@@ -236,7 +251,7 @@ class Monitor:
                 seen.add(it.guid)
                 seen_list.append(it.guid)
                 t = it.title.lower()
-                if first or (must and not any(k in t for k in must)):
+                if first or (must and not feed.get("own_keywords") and not any(k in t for k in must)):
                     continue
                 if not kws or any(k in t for k in kws):
                     self.emit(Event("new", f"📰 {it.title}", url=it.link, extra={"source": url}))
