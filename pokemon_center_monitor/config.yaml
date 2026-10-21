@@ -1,5 +1,5 @@
 name: Pokémon Center Drop-Monitor
-version: "1.0.5"
+version: "1.0.6"
 slug: pokemon_center_monitor
 description: Meldet neue Produkte, Restocks und Warteschlangen im deutschen Pokémon-Center-Shop per Home-Assistant-Webhook.
 arch:
@@ -50,7 +50,7 @@ options:
   min_request_gap_s: 45
   listing_interval_s: 120
   product_recheck_s: 900
-  feed_interval_s: 120
+  feed_interval_s: 60
 schema:
   webhook_url: str?
   ntfy_url: str?
@@ -74,4 +74,4 @@ schema:
   min_request_gap_s: int(30,)
   listing_interval_s: int(60,)
   product_recheck_s: int(300,)
-  feed_interval_s: int(120,)
+  feed_interval_s: int(60,)
