@@ -128,6 +128,7 @@ class Monitor:
         self.listing_ok: set[str] = set()
         self.feeds_logged: set[str] = set()
         self.feed_host_last: dict[str, float] = {}
+        self.emitted_links: set[str] = set()
         self.running = True
 
     # ---------- Filter ----------------------------------------------------
@@ -242,7 +243,10 @@ class Monitor:
             except Exception as e:  # noqa: BLE001
                 log.warning("Feed %s nicht lesbar: %s", url, e)
                 continue
-            if url not in self.feeds_logged:
+            # Erster Abruf nach dem Start = Baseline: was während einer Pause (z. B. Nachtruhe)
+            # erschienen ist, ist veraltet und wird nicht nachträglich gemeldet.
+            first_since_start = url not in self.feeds_logged
+            if first_since_start:
                 self.feeds_logged.add(url)
                 log.info("Feed ok: %s – %d Einträge, neuester: %s", url, len(items),
                          items[0].title[:80] if items else "-")
@@ -250,7 +254,7 @@ class Monitor:
             key = "feed2:" + url
             seen_list = [g for g in self.store.meta_get(key).split("\n") if g]
             seen = set(seen_list)
-            first = not seen
+            first = not seen or first_since_start
             for it in items:
                 if it.guid in seen:
                     continue
@@ -264,6 +268,9 @@ class Monitor:
                         log.info("Baseline-Treffer [%s] %s – %s", it.published or "?", host, it.title[:120])
                     continue
                 if not kws or any(k in t for k in kws):
+                    if it.link in self.emitted_links:      # gleicher Deal aus zweitem Feed
+                        continue
+                    self.emitted_links.add(it.link)
                     self.emit(Event("new", f"📰 {it.title}", url=it.link, extra={"source": url}))
             self.store.meta_set(key, "\n".join(seen_list[-500:]))
 
