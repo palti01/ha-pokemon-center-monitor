@@ -1,5 +1,5 @@
 name: Xenia Bridge
-version: "1.0.0"
+version: "1.1.0"
 slug: xenia_bridge
 description: Bindet die Mahlkönig Xenia lokal per MQTT in Home Assistant ein (Ein/Aus-Schalter, Temperaturen).
 arch:

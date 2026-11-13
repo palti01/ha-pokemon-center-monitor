@@ -7,10 +7,13 @@ Nach dem Start legt die App per MQTT-Discovery das Gerät **Xenia** an:
 | Entität | Inhalt |
 |---|---|
 | `switch.xenia` | Maschine ein/aus |
+| `switch.xenia_dampfboiler` | Dampfboiler ein/aus |
+| `sensor.xenia_betriebszustand` | Aus / An / Eco / Bezug |
 | `sensor.xenia_brew_boiler` | Brühboiler-Temperatur |
 | `sensor.xenia_brew_group` | Brühgruppen-Temperatur |
 | `sensor.xenia_steam_pressure` | Dampfboiler-Druck |
 | `sensor.xenia_last_shot` | Dauer des letzten Bezugs |
+| `sensor.xenia_set_*` | Sollwerte Brühboiler, Brühgruppe, Dampfdruck (nur gelesen) |
 
 Voraussetzung: Mosquitto-App und MQTT-Integration laufen. Die Zugangsdaten holt sich die App selbst.
 

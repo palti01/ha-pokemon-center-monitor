@@ -23,6 +23,9 @@ DISCOVERY = "homeassistant"
 AVAIL_TOPIC = f"{BASE}/availability"
 STATE_TOPIC = f"{BASE}/state"
 CMD_TOPIC = f"{BASE}/power/set"
+STEAM_CMD_TOPIC = f"{BASE}/steam/set"
+SETTINGS_TOPIC = f"{BASE}/settings"
+SETTINGS_INTERVAL_S = 300
 
 DEVICE = {
     "identifiers": ["mahlkoenig_xenia"],
@@ -74,6 +77,32 @@ class Xenia:
         with self.lock, urllib.request.urlopen(req, timeout=self.timeout) as r:
             return json.load(r)
 
+    def settings(self):
+        """Sollwerte der Maschine (nur lesen)."""
+        req = urllib.request.Request(
+            f"{self.base}/api/v2/general",
+            headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
+        )
+        with self.lock, urllib.request.urlopen(req, timeout=self.timeout) as r:
+            return json.load(r)
+
+    def set_steam(self, on):
+        return self._post("/api/v2/toggle/sb", {"TOGGLE": 1 if on else 0})
+
+    def _post(self, path, payload):
+        body = json.dumps(payload, separators=(",", ":")).encode()
+        req = urllib.request.Request(
+            f"{self.base}{path}",
+            data=body,
+            method="POST",
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "X-Requested-With": "XMLHttpRequest",
+            },
+        )
+        with self.lock, urllib.request.urlopen(req, timeout=self.timeout) as r:
+            return r.read().decode(errors="replace")
+
     def set_power(self, on):
         body = json.dumps({"action": "1" if on else "0"}, separators=(",", ":")).encode()
         req = urllib.request.Request(
@@ -100,9 +129,48 @@ def discovery_messages():
             "icon": "mdi:coffee-maker",
             "command_topic": CMD_TOPIC,
             "state_topic": STATE_TOPIC,
-            "value_template": "{{ 'ON' if (value_json.MA_STATUS | int(0)) == 1 else 'OFF' }}",
+            "value_template": "{{ 'ON' if (value_json.MA_STATUS | int(0)) in [1, 2, 3, 4] else 'OFF' }}",
+        },
+        f"{DISCOVERY}/switch/xenia/steam/config": {
+            **avail,
+            "name": "Dampfboiler",
+            "unique_id": "xenia_steam",
+            "default_entity_id": "switch.xenia_dampfboiler",
+            "icon": "mdi:kettle-steam",
+            "command_topic": STEAM_CMD_TOPIC,
+            "state_topic": STATE_TOPIC,
+            "value_template": "{{ 'ON' if (value_json.SB_STATUS | int(0)) == 2 else 'OFF' }}",
+        },
+        f"{DISCOVERY}/sensor/xenia/mode/config": {
+            **avail,
+            "name": "Betriebszustand",
+            "unique_id": "xenia_mode",
+            "default_entity_id": "sensor.xenia_betriebszustand",
+            "icon": "mdi:coffee-maker-outline",
+            "state_topic": STATE_TOPIC,
+            "device_class": "enum",
+            "options": ["Aus", "An", "Eco", "Bezug", "An (4)", "Unbekannt"],
+            "value_template": "{{ {0: 'Aus', 1: 'An', 2: 'Eco', 3: 'Bezug', 4: 'An (4)'}.get(value_json.MA_STATUS | int(-1), 'Unbekannt') }}",
         },
     }
+    setpoints = [
+        ("set_brew_boiler", "Brühboiler Soll", "BB_SET_TEMP", "°C", "temperature"),
+        ("set_brew_group", "Brühgruppe Soll", "BG_SET_TEMP", "°C", "temperature"),
+        ("set_steam_pressure", "Dampfdruck Soll", "SB_SET_PRESS", "bar", "pressure"),
+    ]
+    for key, name, field, unit, dc in setpoints:
+        msgs[f"{DISCOVERY}/sensor/xenia/{key}/config"] = {
+            **avail,
+            "name": name,
+            "unique_id": f"xenia_{key}",
+            "default_entity_id": f"sensor.xenia_{key}",
+            "entity_category": "diagnostic",
+            "state_topic": SETTINGS_TOPIC,
+            "value_template": f"{{{{ value_json.{field} }}}}",
+            "unit_of_measurement": unit,
+            "device_class": dc,
+            "suggested_display_precision": 1,
+        }
     sensors = [
         ("brew_boiler", "Brühboiler", "BB_SENS_TEMP_A", "°C", "temperature", None),
         ("brew_group", "Brühgruppe", "BG_SENS_TEMP_A", "°C", "temperature", None),
@@ -132,6 +200,7 @@ class Bridge:
         self.xenia = Xenia(opts["host"])
         self.poll_now = threading.Event()
         self.online = None
+        self.next_settings = 0.0
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="xenia_bridge")
         self.client.will_set(AVAIL_TOPIC, "offline", retain=True)
         self.client.on_connect = self.on_connect
@@ -140,6 +209,7 @@ class Bridge:
     def on_connect(self, client, userdata, flags, reason_code, properties):
         log.info("MQTT verbunden (%s)", reason_code)
         client.subscribe(CMD_TOPIC)
+        client.subscribe(STEAM_CMD_TOPIC)
         client.subscribe(f"{DISCOVERY}/status")
         self.publish_discovery()
         self.online = None  # Verfügbarkeit nach (Wieder-)Verbindung neu melden
@@ -164,6 +234,13 @@ class Bridge:
             except (urllib.error.URLError, OSError) as e:
                 log.warning("Befehl %s fehlgeschlagen: %s", payload, e)
             self.poll_now.set()
+        if msg.topic == STEAM_CMD_TOPIC and payload in ("ON", "OFF"):
+            try:
+                self.xenia.set_steam(payload == "ON")
+                log.info("Dampfboiler %s gesendet", payload)
+            except (urllib.error.URLError, OSError) as e:
+                log.warning("Dampfboiler-Befehl %s fehlgeschlagen: %s", payload, e)
+            self.poll_now.set()
 
     def set_online(self, online):
         if online != self.online:
@@ -180,6 +257,12 @@ class Bridge:
             return
         self.client.publish(STATE_TOPIC, json.dumps(data), retain=True)
         self.set_online(True)
+        if time.monotonic() >= self.next_settings:
+            try:
+                self.client.publish(SETTINGS_TOPIC, json.dumps(self.xenia.settings()), retain=True)
+                self.next_settings = time.monotonic() + SETTINGS_INTERVAL_S
+            except (urllib.error.URLError, OSError, ValueError) as e:
+                log.debug("Sollwerte nicht lesbar: %s", e)
 
     def run(self):
         host, port, user, pw = mqtt_credentials(self.opts)
